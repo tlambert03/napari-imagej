@@ -96,25 +96,36 @@ def _usable(info):
 # Credit: https://gist.github.com/xhlulu/95117e225b7a1aa806e696180a72bdd0
 
 def _functionify(info):
-    def run_module(**kwargs):
-        args = kwargs #locals()
-        logger.debug(f'run_module: {run_module.__qualname__}({args}) -- {info.getIdentifier()}')
-        m = ij.module().run(info, True, ij.py.jargs(args)).get()
-        logger.debug(f'run_module: execution complete')
-        outputs = ij.py.from_java(m.getOutputs())
-        result = outputs.popitem()[1] if len(outputs) == 1 else outputs
-        logger.debug(f'run_module: result = {result}')
-        return result
-
     menu_string = " > ".join(str(p) for p in info.getMenuPath())
-    run_module.__doc__ = f"Invoke ImageJ2's {menu_string} command"
-    run_module.__name__ = re.sub('[^a-zA-Z0-9_]', '_', menu_string)
-    run_module.__qualname__ = menu_string
+    module_name = re.sub('[^a-zA-Z0-9_]', '_', menu_string)
+
+    # TODO insert typed args
+    funcStr = ("def " + module_name + "(**kwargs):\n"
+    "   args = locals()\n"
+    "   logger.debug(f'run_module: {run_module.__qualname__}({args}) -- {info.getIdentifier()}')\n"
+    "   m = ij.module().run(" + info, True, ij.py.jargs(locals())).get()+")\n"
+    "   logger.debug(f'" + module_name + ": execution complete')\n"
+    "   result = outputs.popitem()[1] if len(outputs) == 1 else outputs\n"
+    "   logger.debug(f'run_module: result = {result}')\n"
+    "   return result")
+
+    # TODO remove this
+    if "Frangi" in funcStr:
+        print("---- found frangi ----")
+        print(funcStr)
+        print("---- end frangi ----")
+
+    exec(funcStr)
+
+    module_name._info = info
+    module_name.__doc__ = f"Invoke ImageJ2's {menu_string} command"
+    module_name.__name__ = module_name
+    module_name.__qualname__ = menu_string
 
     type_hints = {str(i.getName()): _ptype(i.getType()) for i in info.inputs()}
     out_types = [o.getType() for o in info.outputs()]
     type_hints['return'] = _ptype(out_types[0]) if len(out_types) == 1 else dict
-    run_module.__annotations__ = type_hints
+    module_name.__annotations__ = type_hints
 
     ##################################################
     # ALTERNATE METHOD: REWRITE THE ACTUAL SIGNATURE #
@@ -140,8 +151,7 @@ def _functionify(info):
     #except Exception as e:
     #    print(e)
 
-    run_module._info = info
-    return run_module
+    return module_name
 
 
 @napari_hook_implementation
