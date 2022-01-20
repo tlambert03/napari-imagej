@@ -26,6 +26,8 @@ from qtpy.QtWidgets import (
 from magicgui import magicgui
 from napari import Viewer
 from napari_imagej._ptypes import PTypes
+from inspect import signature, Parameter, Signature
+
 
 import logging
 
@@ -161,22 +163,24 @@ def _postprocess_module(module):
 
 # Credit: https://gist.github.com/xhlulu/95117e225b7a1aa806e696180a72bdd0
 
+def _param_from_module_item(item):
+    kwargs = {
+        "name": ij.py.from_java(item.getName()),
+        "kind": Parameter.POSITIONAL_OR_KEYWORD,
+        "annotation": _ptype(item.getType())
+    }
+    if not item.isRequired():
+        kwargs["default"] = ij.py.from_java(item.getDefaultValue())
+    p = Parameter(**kwargs)
+    return p
+
 
 def _modify_function_signature(function, inputs, module_info):
     """Rewrites the passed function with type annotations for all I/O items in the module."""
-    from inspect import signature, Parameter, Signature
-
     try:
         sig: Signature = signature(function)
         # Grab all options after the module inputs
-        module_params = [
-            Parameter(
-                str(i.getName()),
-                kind=Parameter.POSITIONAL_OR_KEYWORD,
-                annotation=_ptype(i.getType()),
-            )
-            for i in inputs
-        ]
+        module_params = [_param_from_module_item(i) for i in inputs]
         other_params = list(sig.parameters.values())[1:]
         all_params = module_params + other_params
         function.__signature__ = sig.replace(
